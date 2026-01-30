@@ -151,21 +151,26 @@ class AccountManager:
         self.failure_count = 0  # 累计失败次数（用于统计展示）
         self.session_usage_count = 0  # 本次启动后使用次数（用于均衡轮询）
 
-    def handle_non_http_error(self, error_context: str = "", request_id: str = "") -> None:
+    def handle_non_http_error(self, error_context: str = "", request_id: str = "", quota_type: Optional[str] = None) -> None:
         """
-        统一处理非HTTP错误（网络错误、解析错误等）- 极简版：只有冷却
+        统一处理非HTTP错误（网络错误、解析错误等）- 简化版：只有配额冷却
 
         Args:
             error_context: 错误上下文（如"JWT获取"、"聊天请求"）
             request_id: 请求ID（用于日志）
+            quota_type: 配额类型（"text", "images", "videos"），用于按类型冷却
         """
         req_tag = f"[req_{request_id}] " if request_id else ""
-        self.last_error_time = time.time()
-        self.last_cooldown_time = time.time()
-        self.is_available = False
+
+        # 如果没有指定配额类型，默认冷却对话配额（因为对话是基础）
+        if not quota_type or quota_type not in QUOTA_TYPES:
+            quota_type = "text"
+
+        self.quota_cooldowns[quota_type] = time.time()
+        cooldown_seconds = self._get_quota_cooldown_seconds(quota_type)
         logger.warning(
             f"[ACCOUNT] [{self.config.account_id}] {req_tag}"
-            f"{error_context}失败，账户将休息{self.global_cooldown_seconds}秒后自动恢复"
+            f"{error_context}失败，{QUOTA_TYPES[quota_type]}配额将休息{cooldown_seconds}秒后自动恢复"
         )
 
     def _get_quota_cooldown_seconds(self, quota_type: Optional[str]) -> int:
@@ -185,20 +190,17 @@ class AccountManager:
 
     def handle_http_error(self, status_code: int, error_detail: str = "", request_id: str = "", quota_type: Optional[str] = None) -> None:
         """
-        统一处理HTTP错误 - 极简版：只有冷却，没有永久禁用
+        统一处理HTTP错误 - 简化版：只有配额冷却
 
         Args:
             status_code: HTTP状态码
             error_detail: 错误详情
             request_id: 请求ID（用于日志）
-            quota_type: 配额类型（"text", "images", "videos"），用于429错误按类型冷却
+            quota_type: 配额类型（"text", "images", "videos"），用于按类型冷却
 
         处理逻辑：
             - 400: 参数错误，不计入失败（客户端问题）
-            - 429 + quota_type: 按配额类型冷却（对话/绘图/视频独立冷却）
-            - 429 无quota_type: 全局冷却
-            - 401/403: 全局冷却
-            - 502/503及其他HTTP错误: 全局冷却（新增）
+            - 所有其他错误: 按配额类型冷却（默认为对话配额）
         """
         req_tag = f"[req_{request_id}] " if request_id else ""
 
@@ -210,36 +212,17 @@ class AccountManager:
             )
             return
 
-        # 429限流错误：按配额类型冷却或全局冷却
-        if status_code == 429:
-            if quota_type and quota_type in QUOTA_TYPES:
-                # 按配额类型冷却（不影响账户整体可用性）
-                self.quota_cooldowns[quota_type] = time.time()
-                cooldown_seconds = self._get_quota_cooldown_seconds(quota_type)
-                logger.warning(
-                    f"[ACCOUNT] [{self.config.account_id}] {req_tag}"
-                    f"{QUOTA_TYPES[quota_type]}配额限流，将在{cooldown_seconds}秒后自动恢复"
-                    f"{': ' + error_detail[:100] if error_detail else ''}"
-                )
-            else:
-                # 全局冷却（未指定配额类型）
-                self.last_cooldown_time = time.time()
-                self.is_available = False
-                logger.warning(
-                    f"[ACCOUNT] [{self.config.account_id}] {req_tag}"
-                    f"遇到429限流，账户将休息{self.global_cooldown_seconds}秒后自动恢复"
-                    f"{': ' + error_detail[:100] if error_detail else ''}"
-                )
-            return
+        # 所有其他错误：按配额类型冷却（默认为对话配额）
+        # 如果没有指定配额类型，默认冷却对话配额（因为对话是基础）
+        if not quota_type or quota_type not in QUOTA_TYPES:
+            quota_type = "text"
 
-        # 401/403/502/503及其他HTTP错误：全局冷却（统一处理）
-        self.last_error_time = time.time()
-        self.last_cooldown_time = time.time()
-        self.is_available = False
+        self.quota_cooldowns[quota_type] = time.time()
+        cooldown_seconds = self._get_quota_cooldown_seconds(quota_type)
         error_type = HTTP_ERROR_NAMES.get(status_code, f"HTTP {status_code}")
         logger.warning(
             f"[ACCOUNT] [{self.config.account_id}] {req_tag}"
-            f"遇到{error_type}错误，账户将休息{self.global_cooldown_seconds}秒后自动恢复"
+            f"遇到{error_type}错误，{QUOTA_TYPES[quota_type]}配额将休息{cooldown_seconds}秒后自动恢复"
             f"{': ' + error_detail[:100] if error_detail else ''}"
         )
 
@@ -304,41 +287,49 @@ class AccountManager:
             raise
 
     def should_retry(self) -> bool:
-        """检查账户是否可重试 - 极简版：只检查冷却期"""
-        if self.is_available:
-            return True
-
-        current_time = time.time()
-
-        # 检查冷却期（所有错误冷却期后自动恢复）
-        if self.last_cooldown_time > 0:
-            if current_time - self.last_cooldown_time > self.global_cooldown_seconds:
-                # 冷却期已过，自动恢复账户可用性
-                self.is_available = True
-                self.last_cooldown_time = 0.0
-                logger.info(f"[ACCOUNT] [{self.config.account_id}] 冷却期已过，账户已自动恢复")
-                return True
-            return False  # 仍在冷却期
-
-        # 如果没有冷却时间戳但账户不可用，可能是手动禁用
-        return False
+        """检查账户是否可重试 - 简化版：账户始终可用（由配额冷却控制）"""
+        # 账户本身始终可用，具体功能由配额冷却控制
+        return True
 
     def get_cooldown_info(self) -> tuple[int, str | None]:
-        """获取账户冷却信息"""
+        """获取账户冷却信息（只有配额冷却）"""
         current_time = time.time()
 
-        # 检查冷却期
-        if self.last_cooldown_time > 0:
-            remaining = self.global_cooldown_seconds - (current_time - self.last_cooldown_time)
-            if remaining > 0:
-                return (int(remaining), "全局冷却")
+        # 检查配额冷却（找出最长的剩余冷却时间）
+        max_quota_remaining = 0
+        limited_quota_types = []  # 存储配额类型（text/images/videos）
+        quota_icons = {"text": "💬", "images": "🎨", "videos": "🎬"}
 
-        # 如果账户可用且没有冷却，返回正常状态
-        if self.is_available:
-            return (0, None)
+        for quota_type in QUOTA_TYPES:
+            if quota_type in self.quota_cooldowns:
+                cooldown_time = self.quota_cooldowns[quota_type]
+                elapsed = current_time - cooldown_time
+                cooldown_seconds = self._get_quota_cooldown_seconds(quota_type)
+                if elapsed < cooldown_seconds:
+                    remaining = int(cooldown_seconds - elapsed)
+                    if remaining > max_quota_remaining:
+                        max_quota_remaining = remaining
+                    limited_quota_types.append(quota_type)
 
-        # 账户不可用但没有冷却时间戳（可能是手动禁用）
-        return (-1, "手动禁用")
+        # 如果有配额冷却，返回最长的冷却时间和简化的描述
+        if max_quota_remaining > 0:
+            # 生成 emoji 图标组合
+            icons = "".join([quota_icons[qt] for qt in limited_quota_types])
+
+            # 判断是否全部冷却
+            if len(limited_quota_types) == 3:
+                return (max_quota_remaining, f"{icons} 全部冷却")
+            elif len(limited_quota_types) == 1:
+                # 单个配额冷却
+                quota_name = QUOTA_TYPES[limited_quota_types[0]]
+                return (max_quota_remaining, f"{icons} {quota_name}冷却")
+            else:
+                # 多个配额冷却（但不是全部）
+                quota_names = "/".join([QUOTA_TYPES[qt] for qt in limited_quota_types])
+                return (max_quota_remaining, f"{icons} {quota_names}冷却")
+
+        # 没有冷却，返回正常状态
+        return (0, None)
 
     def get_quota_status(self) -> Dict[str, any]:
         """

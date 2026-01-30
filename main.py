@@ -1081,9 +1081,8 @@ async def admin_stats(request: Request):
         # 判断账户状态
         is_expired = config.is_expired()
         is_manual_disabled = config.disabled
-        is_rate_limited = cooldown_seconds > 0 and cooldown_reason and "配额冷却" in cooldown_reason
-        is_global_cooldown = cooldown_seconds > 0 and cooldown_reason == "全局冷却"
-        is_failed = is_expired or is_global_cooldown
+        is_rate_limited = cooldown_seconds > 0 and cooldown_reason and "冷却" in cooldown_reason
+        is_failed = is_expired
         is_active = (not is_failed) and (not is_manual_disabled) and (not is_rate_limited)
 
         if is_rate_limited:
@@ -1386,8 +1385,6 @@ async def admin_enable_account(request: Request, account_id: str):
         # 重置运行时冷却状态（允许手动恢复冷却中的账户）
         if account_id in multi_account_mgr.accounts:
             account_mgr = multi_account_mgr.accounts[account_id]
-            account_mgr.is_available = True
-            account_mgr.last_cooldown_time = 0.0
             account_mgr.quota_cooldowns = {}
             logger.info(f"[CONFIG] 账户 {account_id} 冷却状态已重置")
 
@@ -1408,8 +1405,6 @@ async def admin_bulk_enable_accounts(request: Request, account_ids: list[str]):
     for account_id in account_ids:
         if account_id in multi_account_mgr.accounts:
             account_mgr = multi_account_mgr.accounts[account_id]
-            account_mgr.is_available = True
-            account_mgr.last_cooldown_time = 0.0
             account_mgr.quota_cooldowns = {}
     return {"status": "success", "success_count": success_count, "errors": errors}
 
@@ -2103,8 +2098,7 @@ async def chat_impl(
                     # 空响应应该触发重试逻辑，抛出异常让下面的 except 块处理
                     raise HTTPException(status_code=502, detail="Empty response from upstream")
 
-                # 请求成功，账户保持可用
-                account_manager.is_available = True
+                # 请求成功
                 account_manager.conversation_count += 1  # 增加成功次数
 
                 # 记录账号池状态（请求成功）
@@ -2136,7 +2130,7 @@ async def chat_impl(
                 if is_http_exception:
                     account_manager.handle_http_error(status_code, str(e.detail) if hasattr(e, 'detail') else "", request_id, quota_type)
                 else:
-                    account_manager.handle_non_http_error("聊天请求", request_id)
+                    account_manager.handle_non_http_error("聊天请求", request_id, quota_type)
 
                 retry_count += 1
 

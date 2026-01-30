@@ -2255,8 +2255,15 @@ const formatCooldown = (seconds: number) => {
 }
 
 const cooldownClass = (account: AdminAccount) => {
-  if (account.cooldown_seconds > 0) return 'text-amber-700'
-  if (account.cooldown_reason === '手动禁用') return 'text-muted-foreground'
+  // 配额冷却：黄色（警告）
+  if (account.cooldown_seconds > 0) {
+    return 'text-yellow-600'
+  }
+  // 手动禁用：灰色
+  if (account.disabled) {
+    return 'text-muted-foreground'
+  }
+  // 正常：绿色
   return 'text-emerald-600'
 }
 
