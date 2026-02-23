@@ -185,6 +185,10 @@ class RegisterService(BaseTaskService[RegisterTask]):
             log_cb("error", "❌ Freemail JWT Token 未配置")
             return {"success": False, "error": "Freemail JWT Token 未配置"}
 
+        if temp_mail_provider == "cfworker" and not config.basic.cfworker_admin_password:
+            log_cb("error", "❌ CF Worker 管理密码未配置")
+            return {"success": False, "error": "CF Worker admin_password 未配置"}
+
         client = create_temp_mail_client(
             temp_mail_provider,
             domain=domain,
@@ -251,6 +255,12 @@ class RegisterService(BaseTaskService[RegisterTask]):
             config_data["mail_password"] = getattr(client, "password", "")
             config_data["mail_base_url"] = config.basic.duckmail_base_url
             config_data["mail_api_key"] = config.basic.duckmail_api_key
+        elif temp_mail_provider == "cfworker":
+            config_data["mail_password"] = ""
+            config_data["mail_base_url"] = config.basic.cfworker_base_url
+            config_data["mail_jwt_token"] = getattr(client, "jwt_token", "")  # 保存每个邮箱的独立 JWT
+            config_data["mail_verify_ssl"] = config.basic.cfworker_verify_ssl
+            config_data["mail_domain"] = config.basic.cfworker_domain
         else:
             config_data["mail_password"] = getattr(client, "password", "")
 

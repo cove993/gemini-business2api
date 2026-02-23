@@ -240,6 +240,34 @@
                   />
                 </template>
 
+                <!-- CF Worker 配置 -->
+                <template v-if="localSettings.basic.temp_mail_provider === 'cfworker'">
+                  <Checkbox v-model="localSettings.basic.cfworker_verify_ssl">
+                    CF Worker SSL 校验
+                  </Checkbox>
+                  <label class="block text-xs text-muted-foreground">CF Worker API 地址</label>
+                  <input
+                    v-model="localSettings.basic.cfworker_base_url"
+                    type="text"
+                    class="w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="https://your-email-worker.example.com"
+                  />
+                  <label class="block text-xs text-muted-foreground">CF Worker 管理密码</label>
+                  <input
+                    v-model="localSettings.basic.cfworker_admin_password"
+                    type="password"
+                    class="w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="x-admin-auth 密码"
+                  />
+                  <label class="block text-xs text-muted-foreground">CF Worker 邮箱域名（可选）</label>
+                  <input
+                    v-model="localSettings.basic.cfworker_domain"
+                    type="text"
+                    class="w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="留空则使用默认域名"
+                  />
+                </template>
+
                 <label class="block text-xs text-muted-foreground">默认注册数量</label>
                 <input
                   v-model.number="localSettings.basic.register_default_count"
@@ -473,6 +501,16 @@ watch(settings, (value) => {
   next.basic.gptmail_verify_ssl = next.basic.gptmail_verify_ssl ?? true
   next.basic.gptmail_domain = typeof next.basic.gptmail_domain === 'string'
     ? next.basic.gptmail_domain
+    : ''
+  next.basic.cfworker_base_url = typeof next.basic.cfworker_base_url === 'string'
+    ? next.basic.cfworker_base_url
+    : ''
+  next.basic.cfworker_admin_password = typeof next.basic.cfworker_admin_password === 'string'
+    ? next.basic.cfworker_admin_password
+    : ''
+  next.basic.cfworker_verify_ssl = next.basic.cfworker_verify_ssl ?? true
+  next.basic.cfworker_domain = typeof next.basic.cfworker_domain === 'string'
+    ? next.basic.cfworker_domain
     : ''
   next.retry = next.retry || {}
   next.retry.auto_refresh_accounts_seconds = Number.isFinite(next.retry.auto_refresh_accounts_seconds)

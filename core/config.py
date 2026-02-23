@@ -51,7 +51,7 @@ class BasicConfig(BaseModel):
     duckmail_base_url: str = Field(default="https://api.duckmail.sbs", description="DuckMail API地址")
     duckmail_api_key: str = Field(default="", description="DuckMail API key")
     duckmail_verify_ssl: bool = Field(default=True, description="DuckMail SSL校验")
-    temp_mail_provider: str = Field(default="moemail", description="临时邮箱提供商: moemail/duckmail/freemail/gptmail")
+    temp_mail_provider: str = Field(default="moemail", description="临时邮箱提供商: moemail/duckmail/freemail/gptmail/cfworker")
     moemail_base_url: str = Field(default="https://moemail.nanohajimi.mom", description="Moemail API地址")
     moemail_api_key: str = Field(default="", description="Moemail API key")
     moemail_domain: str = Field(default="", description="Moemail 邮箱域名（可选，留空则随机选择）")
@@ -64,6 +64,10 @@ class BasicConfig(BaseModel):
     gptmail_api_key: str = Field(default="gpt-test", description="GPTMail API key")
     gptmail_verify_ssl: bool = Field(default=True, description="GPTMail SSL校验")
     gptmail_domain: str = Field(default="", description="GPTMail 邮箱域名（可选，留空则随机选择）")
+    cfworker_base_url: str = Field(default="", description="CF Worker 自建邮箱 API 地址")
+    cfworker_admin_password: str = Field(default="", description="CF Worker 邮箱管理密码（x-admin-auth）")
+    cfworker_domain: str = Field(default="", description="CF Worker 邮箱域名（可选）")
+    cfworker_verify_ssl: bool = Field(default=True, description="CF Worker SSL校验")
     browser_engine: str = Field(default="dp", description="浏览器引擎")
     browser_headless: bool = Field(default=False, description="自动化浏览器无头模式")
     refresh_window_hours: int = Field(default=1, ge=0, le=24, description="过期刷新窗口（小时）")
@@ -215,6 +219,10 @@ class ConfigManager:
             gptmail_api_key=str(basic_data.get("gptmail_api_key") or "").strip(),
             gptmail_verify_ssl=_parse_bool(basic_data.get("gptmail_verify_ssl"), True),
             gptmail_domain=str(basic_data.get("gptmail_domain") or "").strip(),
+            cfworker_base_url=str(basic_data.get("cfworker_base_url") or "").strip(),
+            cfworker_admin_password=str(basic_data.get("cfworker_admin_password") or "").strip(),
+            cfworker_domain=str(basic_data.get("cfworker_domain") or "").strip(),
+            cfworker_verify_ssl=_parse_bool(basic_data.get("cfworker_verify_ssl"), True),
             browser_engine=basic_data.get("browser_engine") or "dp",
             browser_headless=_parse_bool(basic_data.get("browser_headless"), False),
             refresh_window_hours=int(refresh_window_raw),

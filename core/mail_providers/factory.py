@@ -2,6 +2,7 @@ from typing import Callable, Optional
 
 from core.config import config
 from core.proxy_utils import extract_host, no_proxy_matches, parse_proxy_setting
+from core.cfworker_client import CfWorkerClient
 from core.duckmail_client import DuckMailClient
 from core.freemail_client import FreemailClient
 from core.gptmail_client import GPTMailClient
@@ -40,6 +41,19 @@ def create_temp_mail_client(
             proxy=proxy,
             api_key=api_key or config.basic.moemail_api_key,
             domain=domain or config.basic.moemail_domain,
+            log_callback=log_cb,
+        )
+
+    if provider == "cfworker":
+        effective_base_url = base_url or config.basic.cfworker_base_url
+        if no_proxy_matches(extract_host(effective_base_url), no_proxy):
+            proxy = ""
+        return CfWorkerClient(
+            base_url=effective_base_url,
+            admin_password=api_key or config.basic.cfworker_admin_password,
+            domain=domain or config.basic.cfworker_domain,
+            proxy=proxy,
+            verify_ssl=verify_ssl if verify_ssl is not None else config.basic.cfworker_verify_ssl,
             log_callback=log_cb,
         )
 
